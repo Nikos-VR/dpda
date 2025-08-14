@@ -89,7 +89,7 @@ def process_documents(pdf_directory):
     return qa_chain
 
 # Ρύθμιση του Streamlit UI
-st.set_page_config(page_title="Τμήμα Παραστατικών και Ψηφιακών Τεχνών", layout="wide")
+st.set_page_config(page_title="ΤΠΨΤ chatbot", layout="wide")
 st.header("Είμαι ο βοηθός σας, καλωσήλθατε!")
 
 # Αποθήκευση ιστορικού συνομιλίας
@@ -116,7 +116,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Είσοδος χρήστη
-if prompt := st.chat_input("Ρώτησέ με κάτι για τις σπουδές στο ΤΠΨΤ..."):
+if prompt := st.chat_input("Ρωτήστε με κάτι για τις σπουδές στο ΤΠΨΤ..."):
     # Εμφάνιση ερώτησης χρήστη
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
