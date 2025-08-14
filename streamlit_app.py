@@ -18,7 +18,6 @@ from langchain_core.messages import HumanMessage, AIMessage
 from PyPDF2 import PdfReader
 from bs4 import BeautifulSoup
 import requests
-import tiktoken # Προσθέσαμε τη βιβλιοθήκη για τον υπολογισμό των tokens
 
 # Ρύθμιση του asyncio event loop για να αποφευχθεί το λάθος "There is no current event loop"
 try:
@@ -46,7 +45,7 @@ def get_text_from_url(url):
         # Προσθήκη ελέγχου για το μέγεθος του κειμένου
         MAX_TEXT_LENGTH = 100000 # Μέγιστο όριο χαρακτήρων για αποφυγή υπερφόρτωσης
         if len(text) > MAX_TEXT_LENGTH:
-            st.warning(f"Το κείμενο από το URL {url} είναι πολύ μεγάλο. Θα επεξεργαστώ μόνο τα πρώτα {MAX_TEXT_LENGTH} bytes.")
+            st.warning(f"Το κείμενο από το URL {url} είναι πολύ μεγάλο. Θα επεξεργαστώ μόνο τους πρώτους {MAX_TEXT_LENGTH} χαρακτήρες.")
             text = text[:MAX_TEXT_LENGTH]
             
         return text
@@ -57,9 +56,8 @@ def get_text_from_url(url):
         st.error(f"Σφάλμα κατά την επεξεργασία του περιεχομένου του URL {url}: {e}")
         return ""
 
-
 @st.cache_resource
-def process_documents(pdf_directory):
+def process_documents(directory):
     """Επεξεργάζεται τα PDF, HTML και URLs που βρίσκονται στον φάκελο δεδομένων."""
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
@@ -67,37 +65,50 @@ def process_documents(pdf_directory):
         length_function=len
     )
     all_text = ""
+    processed_count = 0
+
+    if not os.path.isdir(directory):
+        st.error(f"Ο φάκελος {directory} δεν βρέθηκε.")
+        return None
 
     # Βρίσκει όλα τα αρχεία PDF, HTML και το urls.txt στον φάκελο
-    files = [os.path.join(pdf_directory, f) for f in os.listdir(pdf_directory)]
+    files = [os.path.join(directory, f) for f in os.listdir(directory)]
 
     for file_path in files:
-        try:
-            if file_path.endswith('.pdf'):
-                # Διαβάζει PDF
+        if file_path.endswith('.pdf'):
+            try:
                 pdf_reader = PdfReader(file_path)
                 for page in pdf_reader.pages:
                     all_text += page.extract_text()
-            elif file_path.endswith(('.html', '.htm')):
-                # Διαβάζει HTML
+                processed_count += 1
+            except Exception as e:
+                st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {file_path}: {e}")
+        
+        elif file_path.endswith(('.html', '.htm')):
+            try:
                 with open(file_path, 'r', encoding='utf-8') as file:
                     html_content = file.read()
                     soup = BeautifulSoup(html_content, 'html.parser')
                     all_text += soup.get_text()
-            elif file_path.endswith('.txt') and os.path.basename(file_path) == 'urls.txt':
-                # Διαβάζει URLs από το αρχείο urls.txt
+                processed_count += 1
+            except Exception as e:
+                st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {file_path}: {e}")
+
+        elif file_path.endswith('.txt') and os.path.basename(file_path) == 'urls.txt':
+            try:
                 with open(file_path, 'r', encoding='utf-8') as file:
                     urls = file.read().splitlines()
                     for url in urls:
                         if url.strip():
-                            all_text += get_text_from_url(url.strip())
-
-        except Exception as e:
-            st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {file_path}: {e}")
-            return None
+                            url_content = get_text_from_url(url.strip())
+                            if url_content:
+                                all_text += url_content
+                                processed_count += 1
+            except Exception as e:
+                st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου urls.txt: {e}")
     
     if not all_text.strip():
-        st.error("Δεν βρέθηκε κείμενο για επεξεργασία. Ελέγξτε τα αρχεία ή το URL.")
+        st.error("Δεν βρέθηκε κείμενο για επεξεργασία. Ελέγξτε τα αρχεία σας.")
         return None
 
     text_chunks = text_splitter.split_text(all_text)
@@ -121,12 +132,12 @@ if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
 
 # Δημιουργία της διαδρομής προς τον φάκελο με τα έγγραφα
-pdf_dir = "data"
+data_dir = "data"
 
 # Εμφάνιση μηνύματος φόρτωσης στην αρχή
 if st.session_state.qa_chain is None:
     with st.spinner("Επεξεργάζομαι τα έγγραφα και τα URLs..."):
-        st.session_state.qa_chain = process_documents(pdf_dir)
+        st.session_state.qa_chain = process_documents(data_dir)
         if st.session_state.qa_chain:
             st.success("Τα έγγραφα επεξεργάστηκαν με επιτυχία!")
         else:
