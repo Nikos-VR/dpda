@@ -2,6 +2,11 @@ import streamlit as st
 import io
 import os
 import asyncio
+import pysqlite3
+import sys
+
+sys.modules["sqlite3"] = sys.modules["pysqlite3"]
+
 from langchain.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
