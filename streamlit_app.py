@@ -116,7 +116,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Είσοδος χρήστη
-if prompt := st.chat_input("Ρωτήστε με κάτι για τις σπουδές στο ΤΠΨΤ..."):
+if prompt := st.chat_input("Ρωτήστε με κάτι για το τμήμα Παραστατικών και Ψηφιακών Τεχνών..."):
     # Εμφάνιση ερώτησης χρήστη
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
