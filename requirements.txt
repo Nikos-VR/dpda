@@ -2,9 +2,6 @@ streamlit
 langchain
 langchain_google_genai
 pypdf2
-beautifulsoup4
 langchain-chroma
 chromadb
 pysqlite3-binary
-requests
-tiktoken
