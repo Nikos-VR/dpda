@@ -18,6 +18,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from PyPDF2 import PdfReader
 from bs4 import BeautifulSoup
 import requests
+import tiktoken # Προσθέσαμε τη βιβλιοθήκη για τον υπολογισμό των tokens
 
 # Ρύθμιση του asyncio event loop για να αποφευχθεί το λάθος "There is no current event loop"
 try:
@@ -30,18 +31,27 @@ except RuntimeError as ex:
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
 def get_text_from_url(url):
-    """Διαβάζει το κείμενο από μια ιστοσελίδα."""
+    """Διαβάζει το κείμενο από μια ιστοσελίδα με timeout."""
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=15) # Προσθήκη timeout 15 δευτερολέπτων
         response.raise_for_status() # Ελέγχει για σφάλματα HTTP
+        
         soup = BeautifulSoup(response.text, 'html.parser')
         # Αφαιρούμε τα scripts, styles κλπ για να έχουμε καθαρό κείμενο
         for script in soup(["script", "style", "header", "footer", "nav"]):
             script.decompose()
         
-        return soup.get_text()
+        text = soup.get_text()
+        
+        # Προσθήκη ελέγχου για το μέγεθος του κειμένου
+        MAX_TEXT_LENGTH = 100000 # Μέγιστο όριο χαρακτήρων για αποφυγή υπερφόρτωσης
+        if len(text) > MAX_TEXT_LENGTH:
+            st.warning(f"Το κείμενο από το URL {url} είναι πολύ μεγάλο. Θα επεξεργαστώ μόνο τα πρώτα {MAX_TEXT_LENGTH} bytes.")
+            text = text[:MAX_TEXT_LENGTH]
+            
+        return text
     except requests.exceptions.RequestException as e:
-        st.error(f"Σφάλμα κατά την ανάγνωση του URL {url}: {e}")
+        st.error(f"Σφάλμα κατά την ανάγνωση του URL {url}: {e}. Ελέγξτε αν το URL είναι έγκυρο και προσβάσιμο.")
         return ""
     except Exception as e:
         st.error(f"Σφάλμα κατά την επεξεργασία του περιεχομένου του URL {url}: {e}")
