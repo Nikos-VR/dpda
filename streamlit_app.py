@@ -7,6 +7,7 @@ import sys
 
 sys.modules["sqlite3"] = sys.modules["pysqlite3"]
 
+from bs4 import BeautifulSoup
 from langchain.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -28,28 +29,37 @@ llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.5, google_a
 
 @st.cache_resource
 def process_preloaded_documents(pdf_directory):
-    """Επεξεργάζεται τα PDF που βρίσκονται σε έναν συγκεκριμένο φάκελο."""
+    """Επεξεργάζεται τα PDF και HTML που βρίσκονται σε έναν συγκεκριμένο φάκελο."""
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len
     )
-
     all_text = ""
-    # Βρίσκει όλα τα PDF στον φάκελο
-    pdf_files = [
+
+    # Βρίσκει όλα τα PDF και HTML στον φάκελο
+    files = [
         os.path.join(pdf_directory, f)
         for f in os.listdir(pdf_directory)
-        if f.endswith('.pdf')
+        if f.endswith(('.pdf', '.html', '.htm'))
     ]
 
-    for pdf_path in pdf_files:
+    for file_path in files:
         try:
-            pdf_reader = PdfReader(pdf_path)
-            for page in pdf_reader.pages:
-                all_text += page.extract_text()
+            if file_path.endswith('.pdf'):
+                # Διαβάζει PDF
+                pdf_reader = PdfReader(file_path)
+                for page in pdf_reader.pages:
+                    all_text += page.extract_text()
+            elif file_path.endswith(('.html', '.htm')):
+                # Διαβάζει HTML
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    html_content = file.read()
+                    soup = BeautifulSoup(html_content, 'html.parser')
+                    all_text += soup.get_text()
+
         except Exception as e:
-            st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
+            st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {file_path}: {e}")
             return None
 
     text_chunks = text_splitter.split_text(all_text)
@@ -61,7 +71,6 @@ def process_preloaded_documents(pdf_directory):
         return_source_documents=True
     )
     return qa_chain
-
 # Ρύθμιση του Streamlit UI
 st.set_page_config(page_title="ΤΠΨΤ Chatbot", layout="wide")
 st.header("Είμαι ο βοηθός των επισκεπτών του ιστότοπου του Τμήματος Παραστατικών και Ψηφιακών Τεχνών, καλωσήλθατε!")
