@@ -6,3 +6,4 @@ beautifulsoup4
 langchain-chroma
 chromadb
 pysqlite3-binary
+requests
