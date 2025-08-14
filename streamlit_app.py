@@ -24,7 +24,7 @@ except RuntimeError as ex:
     asyncio.set_event_loop(loop)
 
 # Δημιουργία του Gemini Pro μοντέλου
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
 @st.cache_resource
 def process_preloaded_documents(pdf_directory):
@@ -63,8 +63,8 @@ def process_preloaded_documents(pdf_directory):
     return qa_chain
 
 # Ρύθμιση του Streamlit UI
-st.set_page_config(page_title="PDF Chatbot", layout="wide")
-st.header("💬 PDF Chatbot με Gemini")
+st.set_page_config(page_title="ΤΠΨΤ Chatbot", layout="wide")
+st.header("Είμαι ο βοηθός των επισκεπτών του ιστότοπου του Τμήματος Παραστατικών και Ψηφιακών Τεχνών, καλωσήλθατε!")
 
 # Δημιουργία της διαδρομής προς τον φάκελο με τα έγγραφα
 pdf_dir = "data"
@@ -77,12 +77,12 @@ if "qa_chain" not in st.session_state:
 
 # Εμφάνιση μηνύματος φόρτωσης στην αρχή
 if st.session_state.qa_chain is None:
-    with st.spinner("Επεξεργάζομαι τα έγγραφα..."):
+    with st.spinner("Μισό λεπτό παρακαλώ, διαβάζω τα απαραίτητα έγγραφα..."):
         st.session_state.qa_chain = process_preloaded_documents(pdf_dir)
         if st.session_state.qa_chain:
-            st.success("Τα έγγραφα έχουν επεξεργαστεί με επιτυχία!")
+            st.success("Η ενημέρωσή μου ολοκληρώθηκε με επιτυχία!")
         else:
-            st.error("Αδυναμία επεξεργασίας των εγγράφων. Παρακαλώ ελέγξτε τα αρχεία σας.")
+            st.error("Αδυναμία επεξεργασίας των εγγράφων...")
 
 # Εμφάνιση του ιστορικού συνομιλίας
 for message in st.session_state.messages:
@@ -90,7 +90,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Είσοδος χρήστη
-if prompt := st.chat_input("Ρώτησέ με κάτι για τα έγγραφα..."):
+if prompt := st.chat_input("Ρωτήστε με κάτι για τις σπουδές στο ΤΠΨΤ..."):
     # Εμφάνιση ερώτησης χρήστη
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -111,7 +111,7 @@ if prompt := st.chat_input("Ρώτησέ με κάτι για τα έγγραφ�
             answer = response["answer"]
             st.markdown(answer)
         else:
-            answer = "Παρακαλώ επανεκκινήστε την εφαρμογή για να επεξεργαστούν τα έγγραφα."
+            answer = "Παρακαλώ επανεκκινήστε την εφαρμογή για να επεξεργαστώ τα έγγραφα."
             st.markdown(answer)
 
     # Αποθήκευση απάντησης στο ιστορικό
