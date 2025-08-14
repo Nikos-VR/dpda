@@ -3,7 +3,6 @@ import pysqlite3
 import sys
 sys.modules["sqlite3"] = sys.modules["pysqlite3"]
 
-# Στη συνέχεια, ακολουθούν όλες οι υπόλοιπες εισαγωγές
 import streamlit as st
 import io
 import os
@@ -16,8 +15,6 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.chains import ConversationalRetrievalChain
 from langchain_core.messages import HumanMessage, AIMessage
 from PyPDF2 import PdfReader
-from bs4 import BeautifulSoup
-import requests
 
 # Ρύθμιση του asyncio event loop για να αποφευχθεί το λάθος "There is no current event loop"
 try:
@@ -27,89 +24,33 @@ except RuntimeError as ex:
     asyncio.set_event_loop(loop)
 
 # Δημιουργία του Gemini Pro μοντέλου
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
-
-def get_text_from_url(url):
-    """Διαβάζει το κείμενο από μια ιστοσελίδα με timeout."""
-    try:
-        response = requests.get(url, timeout=15) # Προσθήκη timeout 15 δευτερολέπτων
-        response.raise_for_status() # Ελέγχει για σφάλματα HTTP
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        # Αφαιρούμε τα scripts, styles κλπ για να έχουμε καθαρό κείμενο
-        for script in soup(["script", "style", "header", "footer", "nav"]):
-            script.decompose()
-        
-        text = soup.get_text()
-        
-        # Προσθήκη ελέγχου για το μέγεθος του κειμένου
-        MAX_TEXT_LENGTH = 100000 # Μέγιστο όριο χαρακτήρων για αποφυγή υπερφόρτωσης
-        if len(text) > MAX_TEXT_LENGTH:
-            st.warning(f"Το κείμενο από το URL {url} είναι πολύ μεγάλο. Θα επεξεργαστώ μόνο τους πρώτους {MAX_TEXT_LENGTH} χαρακτήρες.")
-            text = text[:MAX_TEXT_LENGTH]
-            
-        return text
-    except requests.exceptions.RequestException as e:
-        st.error(f"Σφάλμα κατά την ανάγνωση του URL {url}: {e}. Ελέγξτε αν το URL είναι έγκυρο και προσβάσιμο.")
-        return ""
-    except Exception as e:
-        st.error(f"Σφάλμα κατά την επεξεργασία του περιεχομένου του URL {url}: {e}")
-        return ""
+llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
 @st.cache_resource
-def process_documents(directory):
-    """Επεξεργάζεται τα PDF, HTML και URLs που βρίσκονται στον φάκελο δεδομένων."""
+def process_preloaded_documents(pdf_directory):
+    """Επεξεργάζεται τα PDF που βρίσκονται σε έναν συγκεκριμένο φάκελο."""
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len
     )
+
     all_text = ""
-    processed_count = 0
+    # Βρίσκει όλα τα PDF στον φάκελο
+    pdf_files = [
+        os.path.join(pdf_directory, f)
+        for f in os.listdir(pdf_directory)
+        if f.endswith('.pdf')
+    ]
 
-    if not os.path.isdir(directory):
-        st.error(f"Ο φάκελος {directory} δεν βρέθηκε.")
-        return None
-
-    # Βρίσκει όλα τα αρχεία PDF, HTML και το urls.txt στον φάκελο
-    files = [os.path.join(directory, f) for f in os.listdir(directory)]
-
-    for file_path in files:
-        if file_path.endswith('.pdf'):
-            try:
-                pdf_reader = PdfReader(file_path)
-                for page in pdf_reader.pages:
-                    all_text += page.extract_text()
-                processed_count += 1
-            except Exception as e:
-                st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {file_path}: {e}")
-        
-        elif file_path.endswith(('.html', '.htm')):
-            try:
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    html_content = file.read()
-                    soup = BeautifulSoup(html_content, 'html.parser')
-                    all_text += soup.get_text()
-                processed_count += 1
-            except Exception as e:
-                st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {file_path}: {e}")
-
-        elif file_path.endswith('.txt') and os.path.basename(file_path) == 'urls.txt':
-            try:
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    urls = file.read().splitlines()
-                    for url in urls:
-                        if url.strip():
-                            url_content = get_text_from_url(url.strip())
-                            if url_content:
-                                all_text += url_content
-                                processed_count += 1
-            except Exception as e:
-                st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου urls.txt: {e}")
-    
-    if not all_text.strip():
-        st.error("Δεν βρέθηκε κείμενο για επεξεργασία. Ελέγξτε τα αρχεία σας.")
-        return None
+    for pdf_path in pdf_files:
+        try:
+            pdf_reader = PdfReader(pdf_path)
+            for page in pdf_reader.pages:
+                all_text += page.extract_text()
+        except Exception as e:
+            st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
+            return None
 
     text_chunks = text_splitter.split_text(all_text)
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
@@ -122,8 +63,11 @@ def process_documents(directory):
     return qa_chain
 
 # Ρύθμιση του Streamlit UI
-st.set_page_config(page_title="Αυτόνομο RAG Chatbot", layout="wide")
-st.header("💬 Αυτόνομο RAG Chatbot με Gemini")
+st.set_page_config(page_title="PDF Chatbot", layout="wide")
+st.header("💬 PDF Chatbot με Gemini")
+
+# Δημιουργία της διαδρομής προς τον φάκελο με τα έγγραφα
+pdf_dir = "data"
 
 # Αποθήκευση ιστορικού συνομιλίας
 if "messages" not in st.session_state:
@@ -131,15 +75,12 @@ if "messages" not in st.session_state:
 if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
 
-# Δημιουργία της διαδρομής προς τον φάκελο με τα έγγραφα
-data_dir = "data"
-
 # Εμφάνιση μηνύματος φόρτωσης στην αρχή
 if st.session_state.qa_chain is None:
-    with st.spinner("Επεξεργάζομαι τα έγγραφα και τα URLs..."):
-        st.session_state.qa_chain = process_documents(data_dir)
+    with st.spinner("Επεξεργάζομαι τα έγγραφα..."):
+        st.session_state.qa_chain = process_preloaded_documents(pdf_dir)
         if st.session_state.qa_chain:
-            st.success("Τα έγγραφα επεξεργάστηκαν με επιτυχία!")
+            st.success("Τα έγγραφα έχουν επεξεργαστεί με επιτυχία!")
         else:
             st.error("Αδυναμία επεξεργασίας των εγγράφων. Παρακαλώ ελέγξτε τα αρχεία σας.")
 
@@ -149,7 +90,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Είσοδος χρήστη
-if prompt := st.chat_input("Ρώτησέ με κάτι για τα έγγραφα ή τις ιστοσελίδες..."):
+if prompt := st.chat_input("Ρώτησέ με κάτι για τα έγγραφα..."):
     # Εμφάνιση ερώτησης χρήστη
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
