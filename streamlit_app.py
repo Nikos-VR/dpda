@@ -2,6 +2,12 @@ import streamlit as st
 import io
 import os
 import asyncio
+import pysqlite3
+import sys
+
+# Ρύθμιση του pysqlite3 για συμβατότητα με το Chroma
+sys.modules["sqlite3"] = sys.modules["pysqlite3"]
+
 from langchain.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -11,12 +17,6 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain_core.messages import HumanMessage, AIMessage
 from PyPDF2 import PdfReader
 from bs4 import BeautifulSoup
-import pysqlite3
-import sys
-
-# Ρύθμιση του pysqlite3 για συμβατότητα με το Chroma
-sys.modules["sqlite3"] = sys.modules["pysqlite3"]
-
 # Ρύθμιση του asyncio event loop για να αποφευχθεί το λάθος "There is no current event loop"
 try:
     _ = asyncio.get_running_loop()
