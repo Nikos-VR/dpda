@@ -2,12 +2,6 @@ import streamlit as st
 import io
 import os
 import asyncio
-import pysqlite3
-import sys
-
-sys.modules["sqlite3"] = sys.modules["pysqlite3"]
-
-from bs4 import BeautifulSoup
 from langchain.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -16,6 +10,12 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.chains import ConversationalRetrievalChain
 from langchain_core.messages import HumanMessage, AIMessage
 from PyPDF2 import PdfReader
+from bs4 import BeautifulSoup
+import pysqlite3
+import sys
+
+# Ρύθμιση του pysqlite3 για συμβατότητα με το Chroma
+sys.modules["sqlite3"] = sys.modules["pysqlite3"]
 
 # Ρύθμιση του asyncio event loop για να αποφευχθεί το λάθος "There is no current event loop"
 try:
@@ -27,9 +27,18 @@ except RuntimeError as ex:
 # Δημιουργία του Gemini Pro μοντέλου
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
+def get_text_from_url(url):
+    """Διαβάζει το κείμενο από μια ιστοσελίδα."""
+    try:
+        url_content = Browse(query="the entire text content of the webpage", url=url)
+        return url_content
+    except Exception as e:
+        st.error(f"Σφάλμα κατά την ανάγνωση του URL {url}: {e}")
+        return ""
+
 @st.cache_resource
-def process_preloaded_documents(pdf_directory):
-    """Επεξεργάζεται τα PDF και HTML που βρίσκονται σε έναν συγκεκριμένο φάκελο."""
+def process_documents(pdf_directory):
+    """Επεξεργάζεται τα PDF, HTML και URLs που βρίσκονται στον φάκελο δεδομένων."""
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
@@ -37,12 +46,8 @@ def process_preloaded_documents(pdf_directory):
     )
     all_text = ""
 
-    # Βρίσκει όλα τα PDF και HTML στον φάκελο
-    files = [
-        os.path.join(pdf_directory, f)
-        for f in os.listdir(pdf_directory)
-        if f.endswith(('.pdf', '.html', '.htm'))
-    ]
+    # Βρίσκει όλα τα αρχεία PDF, HTML και το urls.txt στον φάκελο
+    files = [os.path.join(pdf_directory, f) for f in os.listdir(pdf_directory)]
 
     for file_path in files:
         try:
@@ -57,10 +62,21 @@ def process_preloaded_documents(pdf_directory):
                     html_content = file.read()
                     soup = BeautifulSoup(html_content, 'html.parser')
                     all_text += soup.get_text()
+            elif file_path.endswith('.txt') and os.path.basename(file_path) == 'urls.txt':
+                # Διαβάζει URLs από το αρχείο urls.txt
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    urls = file.read().splitlines()
+                    for url in urls:
+                        if url.strip():
+                            all_text += get_text_from_url(url.strip())
 
         except Exception as e:
             st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {file_path}: {e}")
             return None
+    
+    if not all_text.strip():
+        st.error("Δεν βρέθηκε κείμενο για επεξεργασία. Ελέγξτε τα αρχεία ή το URL.")
+        return None
 
     text_chunks = text_splitter.split_text(all_text)
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
@@ -71,12 +87,10 @@ def process_preloaded_documents(pdf_directory):
         return_source_documents=True
     )
     return qa_chain
-# Ρύθμιση του Streamlit UI
-st.set_page_config(page_title="ΤΠΨΤ Chatbot", layout="wide")
-st.header("Είμαι ο βοηθός των επισκεπτών του ιστότοπου του Τμήματος Παραστατικών και Ψηφιακών Τεχνών, καλωσήλθατε!")
 
-# Δημιουργία της διαδρομής προς τον φάκελο με τα έγγραφα
-pdf_dir = "data"
+# Ρύθμιση του Streamlit UI
+st.set_page_config(page_title="Τμήμα Παραστατικών και Ψηφιακών Τεχνών", layout="wide")
+st.header("Είμαι ο βοηθός σας, καλωσήλθατε!")
 
 # Αποθήκευση ιστορικού συνομιλίας
 if "messages" not in st.session_state:
@@ -84,10 +98,13 @@ if "messages" not in st.session_state:
 if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
 
+# Δημιουργία της διαδρομής προς τον φάκελο με τα έγγραφα
+pdf_dir = "data"
+
 # Εμφάνιση μηνύματος φόρτωσης στην αρχή
 if st.session_state.qa_chain is None:
     with st.spinner("Μισό λεπτό παρακαλώ, διαβάζω τα απαραίτητα έγγραφα..."):
-        st.session_state.qa_chain = process_preloaded_documents(pdf_dir)
+        st.session_state.qa_chain = process_documents(pdf_dir)
         if st.session_state.qa_chain:
             st.success("Η ενημέρωσή μου ολοκληρώθηκε με επιτυχία!")
         else:
@@ -99,7 +116,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Είσοδος χρήστη
-if prompt := st.chat_input("Ρωτήστε με κάτι για τις σπουδές στο ΤΠΨΤ..."):
+if prompt := st.chat_input("Ρώτησέ με κάτι για τις σπουδές στο ΤΠΨΤ..."):
     # Εμφάνιση ερώτησης χρήστη
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
