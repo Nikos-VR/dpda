@@ -27,7 +27,7 @@ except RuntimeError as ex:
     asyncio.set_event_loop(loop)
 
 # Δημιουργία του Gemini Pro μοντέλου
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
 def get_text_from_url(url):
     """Διαβάζει το κείμενο από μια ιστοσελίδα με timeout."""
