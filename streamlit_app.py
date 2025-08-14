@@ -1,13 +1,13 @@
+# Τοποθέτησε αυτές τις γραμμές ΑΜΕΣΑ στην κορυφή του αρχείου
+import pysqlite3
+import sys
+sys.modules["sqlite3"] = sys.modules["pysqlite3"]
+
+# Στη συνέχεια, ακολουθούν όλες οι υπόλοιπες εισαγωγές
 import streamlit as st
 import io
 import os
 import asyncio
-import pysqlite3
-import sys
-
-# Ρύθμιση του pysqlite3 για συμβατότητα με το Chroma
-sys.modules["sqlite3"] = sys.modules["pysqlite3"]
-
 from langchain.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -17,6 +17,8 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain_core.messages import HumanMessage, AIMessage
 from PyPDF2 import PdfReader
 from bs4 import BeautifulSoup
+import requests
+
 # Ρύθμιση του asyncio event loop για να αποφευχθεί το λάθος "There is no current event loop"
 try:
     _ = asyncio.get_running_loop()
@@ -25,16 +27,26 @@ except RuntimeError as ex:
     asyncio.set_event_loop(loop)
 
 # Δημιουργία του Gemini Pro μοντέλου
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
+llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
 def get_text_from_url(url):
     """Διαβάζει το κείμενο από μια ιστοσελίδα."""
     try:
-        url_content = Browse(query="the entire text content of the webpage", url=url)
-        return url_content
-    except Exception as e:
+        response = requests.get(url)
+        response.raise_for_status() # Ελέγχει για σφάλματα HTTP
+        soup = BeautifulSoup(response.text, 'html.parser')
+        # Αφαιρούμε τα scripts, styles κλπ για να έχουμε καθαρό κείμενο
+        for script in soup(["script", "style", "header", "footer", "nav"]):
+            script.decompose()
+        
+        return soup.get_text()
+    except requests.exceptions.RequestException as e:
         st.error(f"Σφάλμα κατά την ανάγνωση του URL {url}: {e}")
         return ""
+    except Exception as e:
+        st.error(f"Σφάλμα κατά την επεξεργασία του περιεχομένου του URL {url}: {e}")
+        return ""
+
 
 @st.cache_resource
 def process_documents(pdf_directory):
@@ -89,8 +101,8 @@ def process_documents(pdf_directory):
     return qa_chain
 
 # Ρύθμιση του Streamlit UI
-st.set_page_config(page_title="ΤΠΨΤ chatbot", layout="wide")
-st.header("Είμαι ο βοηθός σας, καλωσήλθατε!")
+st.set_page_config(page_title="Αυτόνομο RAG Chatbot", layout="wide")
+st.header("💬 Αυτόνομο RAG Chatbot με Gemini")
 
 # Αποθήκευση ιστορικού συνομιλίας
 if "messages" not in st.session_state:
@@ -103,12 +115,12 @@ pdf_dir = "data"
 
 # Εμφάνιση μηνύματος φόρτωσης στην αρχή
 if st.session_state.qa_chain is None:
-    with st.spinner("Μισό λεπτό παρακαλώ, διαβάζω τα απαραίτητα έγγραφα..."):
+    with st.spinner("Επεξεργάζομαι τα έγγραφα και τα URLs..."):
         st.session_state.qa_chain = process_documents(pdf_dir)
         if st.session_state.qa_chain:
-            st.success("Η ενημέρωσή μου ολοκληρώθηκε με επιτυχία!")
+            st.success("Τα έγγραφα επεξεργάστηκαν με επιτυχία!")
         else:
-            st.error("Αδυναμία επεξεργασίας των εγγράφων...")
+            st.error("Αδυναμία επεξεργασίας των εγγράφων. Παρακαλώ ελέγξτε τα αρχεία σας.")
 
 # Εμφάνιση του ιστορικού συνομιλίας
 for message in st.session_state.messages:
@@ -116,7 +128,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Είσοδος χρήστη
-if prompt := st.chat_input("Ρωτήστε με κάτι για το τμήμα Παραστατικών και Ψηφιακών Τεχνών..."):
+if prompt := st.chat_input("Ρώτησέ με κάτι για τα έγγραφα ή τις ιστοσελίδες..."):
     # Εμφάνιση ερώτησης χρήστη
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -137,7 +149,7 @@ if prompt := st.chat_input("Ρωτήστε με κάτι για το τμήμα 
             answer = response["answer"]
             st.markdown(answer)
         else:
-            answer = "Παρακαλώ επανεκκινήστε την εφαρμογή για να επεξεργαστώ τα έγγραφα."
+            answer = "Παρακαλώ επανεκκινήστε την εφαρμογή για να επεξεργαστούν τα έγγραφα."
             st.markdown(answer)
 
     # Αποθήκευση απάντησης στο ιστορικό
