@@ -5,3 +5,4 @@ pypdf2
 langchain-chroma
 chromadb
 pysqlite3-binary
+beautifulsoup4
