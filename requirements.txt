@@ -1,7 +1,8 @@
 streamlit
 langchain
-langchain_google_genai
+langchain-google-genai
 langchain-chroma
 chromadb
 pysqlite3-binary
+langchain-community
 PyMuPDF
