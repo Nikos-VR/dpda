@@ -54,11 +54,15 @@ def process_documents(pdf_directory, cache_key):
         st.warning("Δεν βρέθηκαν αρχεία PDF στον φάκελο 'data'.")
         return None
 
+    st.write(f"Βρέθηκαν {len(pdf_files)} αρχεία PDF για επεξεργασία.")
+    
     for pdf_path in pdf_files:
         try:
+            st.write(f"Επεξεργάζομαι το αρχείο: {os.path.basename(pdf_path)}")
             pdf_reader = PdfReader(pdf_path)
             for page in pdf_reader.pages:
                 all_text += page.extract_text()
+            st.write(f"Το αρχείο {os.path.basename(pdf_path)} επεξεργάστηκε με επιτυχία.")
         except Exception as e:
             st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
             continue
@@ -76,7 +80,7 @@ def process_documents(pdf_directory, cache_key):
         return_source_documents=True
     )
     return qa_chain
-
+    
 # Ρύθμιση του Streamlit UI
 st.set_page_config(page_title="PDF Chatbot", layout="wide")
 st.header("💬 PDF Chatbot με Gemini")
