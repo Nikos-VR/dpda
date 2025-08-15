@@ -69,7 +69,7 @@ if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
 
 # Επεξεργασία του αρχείου μόνο μία φορά
-file_path = os.path.join("data", "my_document.txt")
+file_path = os.path.join("data", "document.txt")
 if st.session_state.qa_chain is None:
     with st.spinner("Επεξεργάζομαι το αρχείο κειμένου..."):
         st.session_state.qa_chain = process_single_txt_file(file_path)
