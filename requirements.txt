@@ -4,3 +4,4 @@ langchain_google_genai
 langchain-chroma
 chromadb
 pysqlite3-binary
+pypdf2
