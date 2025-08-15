@@ -118,23 +118,24 @@ if prompt := st.chat_input("Ρώτησέ με κάτι για τα έγγραφ�
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Παραγωγή απάντησης από το chatbot
-    with st.chat_message("assistant"):
-        if st.session_state.qa_chain:
-            last_four_messages = st.session_state.messages[-4:]
-            chat_history_formatted = []
-            for msg in last_four_messages:
-                if msg["role"] == "user":
-                    chat_history_formatted.append(HumanMessage(content=msg["content"]))
-                else:
-                    chat_history_formatted.append(AIMessage(content=msg["content"]))
-
-            response = st.session_state.qa_chain({"question": prompt, "chat_history": chat_history_formatted})
-            answer = response["answer"]
-            st.markdown(answer)
-        else:
-            answer = "Παρακαλώ επανεκκινήστε την εφαρμογή για να επεξεργαστούν τα έγγραφα."
-            st.markdown(answer)
-
-    # Αποθήκευση απάντησης στο ιστορικό
-    st.session_state.messages.append({"role": "assistant", "content": answer})
+        # Παραγωγή απάντησης από το chatbot
+        with st.chat_message("assistant"):
+            if st.session_state.qa_chain:
+                # Παίρνουμε μόνο τα τελευταία 2 μηνύματα για να μειώσουμε δραστικά το μέγεθος του αιτήματος
+                last_two_messages = st.session_state.messages[-2:]
+                chat_history_formatted = []
+                for msg in last_two_messages:
+                    if msg["role"] == "user":
+                        chat_history_formatted.append(HumanMessage(content=msg["content"]))
+                    else:
+                        chat_history_formatted.append(AIMessage(content=msg["content"]))
+        
+                response = st.session_state.qa_chain({"question": prompt, "chat_history": chat_history_formatted})
+                answer = response["answer"]
+                st.markdown(answer)
+            else:
+                answer = "Παρακαλώ επανεκκινήστε την εφαρμογή για να επεξεργαστούν τα έγγραφα."
+                st.markdown(answer)
+        
+        # Αποθήκευση απάντησης στο ιστορικό
+        st.session_state.messages.append({"role": "assistant", "content": answer})
