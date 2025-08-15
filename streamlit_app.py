@@ -13,7 +13,7 @@ from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.chains import ConversationalRetrievalChain
 from langchain_core.messages import HumanMessage, AIMessage
-from PyPDF2 import PdfReader
+import fitz  # Εισαγωγή της νέας βιβλιοθήκης PyMuPDF
 from langchain_core.documents import Document
 
 # Ρύθμιση του asyncio event loop
@@ -27,9 +27,7 @@ except RuntimeError as ex:
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
 def get_cache_key_for_directory(directory):
-    """
-    Δημιουργεί ένα μοναδικό κλειδί με βάση τον χρόνο τροποποίησης του φακέλου.
-    """
+    """Δημιουργεί ένα μοναδικό κλειδί με βάση τον χρόνο τροποποίησης του φακέλου."""
     try:
         return os.path.getmtime(directory)
     except FileNotFoundError:
@@ -45,30 +43,29 @@ def process_documents(pdf_directory, cache_key):
         length_function=len
     )
 
-    documents = [] # Χρησιμοποιούμε λίστα από Document objects
+    documents = []
     pdf_files = [
         os.path.join(pdf_directory, f)
         for f in os.listdir(pdf_directory)
         if f.endswith('.pdf')
     ]
-    
+
     if not pdf_files:
         st.warning("Δεν βρέθηκαν αρχεία PDF στον φάκελο 'data'.")
         return None
 
     st.write(f"Βρέθηκαν {len(pdf_files)} αρχεία PDF για επεξεργασία.")
-    
+
     for pdf_path in pdf_files:
         try:
             st.write(f"Επεξεργάζομαι το αρχείο: {os.path.basename(pdf_path)}")
-            pdf_reader = PdfReader(pdf_path)
+            doc = fitz.open(pdf_path)  # Άνοιγμα του PDF με το PyMuPDF
             all_text_from_pdf = ""
-            for page in pdf_reader.pages:
-                all_text_from_pdf += page.extract_text()
-            
-            # Δημιουργούμε ένα Document object για κάθε PDF
+            for page in doc:
+                all_text_from_pdf += page.get_text()
+
             documents.append(Document(page_content=all_text_from_pdf, metadata={"source": os.path.basename(pdf_path)}))
-            
+
             st.write(f"Το αρχείο {os.path.basename(pdf_path)} επεξεργάστηκε με επιτυχία.")
         except Exception as e:
             st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
@@ -78,14 +75,12 @@ def process_documents(pdf_directory, cache_key):
         st.error("Δεν βρέθηκε κείμενο για επεξεργασία από τα PDF.")
         return None
 
-    # Χωρίζουμε τα Documents σε chunks
     text_chunks = text_splitter.split_documents(documents)
-    
+
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-    
-    # Δημιουργούμε το vector store από τα Document chunks
+
     vector_store = Chroma.from_documents(text_chunks, embeddings)
-    
+
     qa_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
         retriever=vector_store.as_retriever(),
