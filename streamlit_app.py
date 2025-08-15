@@ -89,10 +89,6 @@ def process_documents(pdf_directory, cache_key):
     )
     return qa_chain
     
-    except Exception as e:
-        st.error(f"Σφάλμα κατά την επεξεργασία των εγγράφων: {e}")
-        return None
-
 # Ρύθμιση του Streamlit UI
 st.set_page_config(page_title="PDF Chatbot", layout="wide")
 st.header("💬 PDF Chatbot με Gemini")
