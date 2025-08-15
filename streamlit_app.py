@@ -1,13 +1,13 @@
-# Τοποθέτησε αυτές τις γραμμές ΑΜΕΣΑ στην κορυφή του αρχείου
+# Τοποθέτησε αυτές τις γραμμές ΑΜΕΣΑ στην κορυφή του αρχείου για τη διόρθωση του chromadb
 import pysqlite3
 import sys
 sys.modules["sqlite3"] = sys.modules["pysqlite3"]
 
+# Στη συνέχεια, ακολουθούν όλες οι υπόλοιπες εισαγωγές
 import streamlit as st
 import io
 import os
 import asyncio
-from langchain.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
@@ -26,9 +26,10 @@ except RuntimeError as ex:
 # Δημιουργία του Gemini Pro μοντέλου
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
-@st.cache_resource
-def process_preloaded_documents(pdf_directory):
-    """Επεξεργάζεται τα PDF που βρίσκονται σε έναν συγκεκριμένο φάκελο."""
+# Η συνάρτηση επεξεργασίας των εγγράφων
+# Αφαιρούμε το st.cache_resource για να διασφαλίσουμε ότι θα εκτελείται κάθε φορά που αλλάζει ο φάκελος
+def process_documents(pdf_directory):
+    """Επεξεργάζεται όλα τα PDF που βρίσκονται σε έναν συγκεκριμένο φάκελο."""
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
@@ -36,13 +37,18 @@ def process_preloaded_documents(pdf_directory):
     )
 
     all_text = ""
-    # Βρίσκει όλα τα PDF στον φάκελο
     pdf_files = [
         os.path.join(pdf_directory, f)
         for f in os.listdir(pdf_directory)
         if f.endswith('.pdf')
     ]
+    
+    # Εάν δεν βρεθούν αρχεία PDF, εμφανίζουμε μήνυμα
+    if not pdf_files:
+        st.error("Δεν βρέθηκαν αρχεία PDF στον φάκελο 'data'.")
+        return None
 
+    # Βρόχος για να διαβάσουμε όλα τα PDF
     for pdf_path in pdf_files:
         try:
             pdf_reader = PdfReader(pdf_path)
@@ -50,7 +56,12 @@ def process_preloaded_documents(pdf_directory):
                 all_text += page.extract_text()
         except Exception as e:
             st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
-            return None
+            # Συνεχίζουμε με το επόμενο αρχείο αν αποτύχει η ανάγνωση ενός
+            continue
+
+    if not all_text.strip():
+        st.error("Δεν βρέθηκε κείμενο για επεξεργασία από τα PDF.")
+        return None
 
     text_chunks = text_splitter.split_text(all_text)
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
@@ -78,7 +89,8 @@ if "qa_chain" not in st.session_state:
 # Εμφάνιση μηνύματος φόρτωσης στην αρχή
 if st.session_state.qa_chain is None:
     with st.spinner("Επεξεργάζομαι τα έγγραφα..."):
-        st.session_state.qa_chain = process_preloaded_documents(pdf_dir)
+        # Καλούμε τη συνάρτηση επεξεργασίας χωρίς cache
+        st.session_state.qa_chain = process_documents(pdf_dir)
         if st.session_state.qa_chain:
             st.success("Τα έγγραφα έχουν επεξεργαστεί με επιτυχία!")
         else:
