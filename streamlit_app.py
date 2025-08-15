@@ -13,7 +13,8 @@ from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.chains import ConversationalRetrievalChain
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain_community.document_loaders import DirectoryLoader, PyMuPDFLoader
+import fitz  # Εισαγωγή της νέας βιβλιοθήκης PyMuPDF
+from langchain_core.documents import Document
 
 # Ρύθμιση του asyncio event loop
 try:
@@ -26,9 +27,7 @@ except RuntimeError as ex:
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
 def get_cache_key_for_directory(directory):
-    """
-    Δημιουργεί ένα μοναδικό κλειδί με βάση τον χρόνο τροποποίησης του φακέλου.
-    """
+    """Δημιουργεί ένα μοναδικό κλειδί με βάση τον χρόνο τροποποίησης του φακέλου."""
     try:
         return os.path.getmtime(directory)
     except FileNotFoundError:
@@ -36,10 +35,7 @@ def get_cache_key_for_directory(directory):
 
 @st.cache_resource
 def process_documents(pdf_directory, cache_key):
-    """
-    Επεξεργάζεται όλα τα PDF που βρίσκονται σε έναν συγκεκριμένο φάκελο,
-    συγκεντρώνοντας τα περιεχόμενα πριν την δημιουργία των chunks.
-    """
+    """Επεξεργάζεται όλα τα PDF, δημιουργώντας ξεχωριστά Document objects για κάθε αρχείο."""
     st.info("Επεξεργασία αρχείων...")
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
@@ -47,48 +43,51 @@ def process_documents(pdf_directory, cache_key):
         length_function=len
     )
 
-    documents_text = []
+    documents = []
     pdf_files = [
         os.path.join(pdf_directory, f)
         for f in os.listdir(pdf_directory)
         if f.endswith('.pdf')
     ]
-    
+
     if not pdf_files:
         st.warning("Δεν βρέθηκαν αρχεία PDF στον φάκελο 'data'.")
         return None
 
     st.write(f"Βρέθηκαν {len(pdf_files)} αρχεία PDF για επεξεργασία.")
-    
+
     for pdf_path in pdf_files:
         try:
             st.write(f"Επεξεργάζομαι το αρχείο: {os.path.basename(pdf_path)}")
-            pdf_reader = PdfReader(pdf_path)
+            doc = fitz.open(pdf_path)  # Άνοιγμα του PDF με το PyMuPDF
             all_text_from_pdf = ""
-            for page in pdf_reader.pages:
-                all_text_from_pdf += page.extract_text()
-            documents_text.append(all_text_from_pdf)
+            for page in doc:
+                all_text_from_pdf += page.get_text()
+
+            documents.append(Document(page_content=all_text_from_pdf, metadata={"source": os.path.basename(pdf_path)}))
+
             st.write(f"Το αρχείο {os.path.basename(pdf_path)} επεξεργάστηκε με επιτυχία.")
         except Exception as e:
             st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
             continue
 
-    if not documents_text:
+    if not documents:
         st.error("Δεν βρέθηκε κείμενο για επεξεργασία από τα PDF.")
         return None
 
-    all_text = " ".join(documents_text)
+    text_chunks = text_splitter.split_documents(documents)
 
-    text_chunks = text_splitter.split_text(all_text)
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-    vector_store = Chroma.from_texts(text_chunks, embeddings)
+
+    vector_store = Chroma.from_documents(text_chunks, embeddings)
+
     qa_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
         retriever=vector_store.as_retriever(),
         return_source_documents=True
     )
     return qa_chain
-    
+
 # Ρύθμιση του Streamlit UI
 st.set_page_config(page_title="PDF Chatbot", layout="wide")
 st.header("💬 PDF Chatbot με Gemini")
@@ -127,24 +126,23 @@ if prompt := st.chat_input("Ρώτησέ με κάτι για τα έγγραφ�
     with st.chat_message("user"):
         st.markdown(prompt)
 
-        # Παραγωγή απάντησης από το chatbot
-        with st.chat_message("assistant"):
-            if st.session_state.qa_chain:
-                # Παίρνουμε μόνο τα τελευταία 2 μηνύματα για να μειώσουμε δραστικά το μέγεθος του αιτήματος
-                last_two_messages = st.session_state.messages[-1:]
-                chat_history_formatted = []
-                for msg in last_two_messages:
-                    if msg["role"] == "user":
-                        chat_history_formatted.append(HumanMessage(content=msg["content"]))
-                    else:
-                        chat_history_formatted.append(AIMessage(content=msg["content"]))
-        
-                response = st.session_state.qa_chain({"question": prompt, "chat_history": chat_history_formatted})
-                answer = response["answer"]
-                st.markdown(answer)
-            else:
-                answer = "Παρακαλώ επανεκκινήστε την εφαρμογή για να επεξεργαστούν τα έγγραφα."
-                st.markdown(answer)
-        
-        # Αποθήκευση απάντησης στο ιστορικό
-        st.session_state.messages.append({"role": "assistant", "content": answer})
+    # Παραγωγή απάντησης από το chatbot
+    with st.chat_message("assistant"):
+        if st.session_state.qa_chain:
+            last_four_messages = st.session_state.messages[-4:]
+            chat_history_formatted = []
+            for msg in last_four_messages:
+                if msg["role"] == "user":
+                    chat_history_formatted.append(HumanMessage(content=msg["content"]))
+                else:
+                    chat_history_formatted.append(AIMessage(content=msg["content"]))
+
+            response = st.session_state.qa_chain({"question": prompt, "chat_history": chat_history_formatted})
+            answer = response["answer"]
+            st.markdown(answer)
+        else:
+            answer = "Παρακαλώ επανεκκινήστε την εφαρμογή για να επεξεργαστούν τα έγγραφα."
+            st.markdown(answer)
+
+    # Αποθήκευση απάντησης στο ιστορικό
+    st.session_state.messages.append({"role": "assistant", "content": answer})
