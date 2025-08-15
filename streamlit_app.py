@@ -122,7 +122,7 @@ if prompt := st.chat_input("Ρώτησέ με κάτι για τα έγγραφ�
         with st.chat_message("assistant"):
             if st.session_state.qa_chain:
                 # Παίρνουμε μόνο τα τελευταία 2 μηνύματα για να μειώσουμε δραστικά το μέγεθος του αιτήματος
-                last_two_messages = st.session_state.messages[-2:]
+                last_two_messages = st.session_state.messages[-1:]
                 chat_history_formatted = []
                 for msg in last_two_messages:
                     if msg["role"] == "user":
