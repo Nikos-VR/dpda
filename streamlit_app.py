@@ -1,4 +1,4 @@
-# Διόρθωση για το chromadb
+# Τοποθέτησε αυτές τις γραμμές ΑΜΕΣΑ στην κορυφή του αρχείου
 import pysqlite3
 import sys
 sys.modules["sqlite3"] = sys.modules["pysqlite3"]
@@ -13,8 +13,8 @@ from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.chains import ConversationalRetrievalChain
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.documents import Document
 from PyPDF2 import PdfReader
+from langchain_core.documents import Document
 
 # Ρύθμιση του asyncio event loop
 try:
@@ -37,9 +37,7 @@ def get_cache_key_for_directory(directory):
 
 @st.cache_resource
 def process_documents(pdf_directory, cache_key):
-    """
-    Επεξεργάζεται όλα τα PDF, δημιουργώντας ξεχωριστά Document objects για κάθε αρχείο.
-    """
+    """Επεξεργάζεται όλα τα PDF, δημιουργώντας ξεχωριστά Document objects για κάθε αρχείο."""
     st.info("Επεξεργασία αρχείων...")
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
@@ -47,7 +45,7 @@ def process_documents(pdf_directory, cache_key):
         length_function=len
     )
 
-    documents = [] # Αλλαγή: Χρησιμοποιούμε λίστα από Document objects
+    documents = [] # Χρησιμοποιούμε λίστα από Document objects
     pdf_files = [
         os.path.join(pdf_directory, f)
         for f in os.listdir(pdf_directory)
@@ -94,7 +92,7 @@ def process_documents(pdf_directory, cache_key):
         return_source_documents=True
     )
     return qa_chain
-    
+
 # Ρύθμιση του Streamlit UI
 st.set_page_config(page_title="PDF Chatbot", layout="wide")
 st.header("💬 PDF Chatbot με Gemini")
@@ -136,7 +134,6 @@ if prompt := st.chat_input("Ρώτησέ με κάτι για τα έγγραφ�
     # Παραγωγή απάντησης από το chatbot
     with st.chat_message("assistant"):
         if st.session_state.qa_chain:
-            # Παίρνουμε μόνο τα τελευταία 4 μηνύματα για να μειώσουμε το μέγεθος του αιτήματος
             last_four_messages = st.session_state.messages[-4:]
             chat_history_formatted = []
             for msg in last_four_messages:
