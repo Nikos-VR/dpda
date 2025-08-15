@@ -27,7 +27,7 @@ llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_a
 @st.cache_resource
 def process_single_txt_file(file_path):
     """Επεξεργάζεται ένα μόνο αρχείο κειμένου."""
-    text_splitter = RecursiveCharacterCharacterTextSplitter(
+    text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len
