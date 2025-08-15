@@ -24,9 +24,16 @@ except RuntimeError as ex:
 # Δημιουργία του Gemini Pro μοντέλου
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
+def get_cache_key_for_file(file_path):
+    """Δημιουργεί ένα μοναδικό κλειδί με βάση τον χρόνο τροποποίησης του αρχείου."""
+    try:
+        return os.path.getmtime(file_path)
+    except FileNotFoundError:
+        return None
+
 @st.cache_resource
-def process_single_txt_file(file_path):
-    """Επεξεργάζεται ένα μόνο αρχείο κειμένου."""
+def process_single_txt_file(file_path, cache_key):
+    """Επεξεργάζεται ένα μόνο αρχείο κειμένου, χρησιμοποιώντας το cache_key για ανανέωση."""
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
@@ -58,7 +65,11 @@ def process_single_txt_file(file_path):
     )
     return qa_chain
 
-# Ρύθμιση του Streamlit UI
+---
+
+### UI και Λογική της Εφαρμογής
+
+```python
 st.set_page_config(page_title="Απλό Chatbot", layout="wide")
 st.header("💬 Απλό Chatbot με Gemini")
 
@@ -70,9 +81,11 @@ if "qa_chain" not in st.session_state:
 
 # Επεξεργασία του αρχείου μόνο μία φορά
 file_path = os.path.join("data", "test.txt")
-if st.session_state.qa_chain is None:
+cache_key = get_cache_key_for_file(file_path)
+
+if st.session_state.qa_chain is None or cache_key is not None:
     with st.spinner("Επεξεργάζομαι το αρχείο κειμένου..."):
-        st.session_state.qa_chain = process_single_txt_file(file_path)
+        st.session_state.qa_chain = process_single_txt_file(file_path, cache_key)
         if st.session_state.qa_chain:
             st.success("Το αρχείο επεξεργάστηκε με επιτυχία!")
         else:
