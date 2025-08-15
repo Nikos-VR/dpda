@@ -1,7 +1,6 @@
 streamlit
 langchain
 langchain_google_genai
-pypdf2
 langchain-chroma
 chromadb
 pysqlite3-binary
