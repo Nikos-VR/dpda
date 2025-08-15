@@ -38,7 +38,7 @@ def get_cache_key_for_directory(directory):
 def process_documents(pdf_directory, cache_key):
     """
     Επεξεργάζεται όλα τα PDF που βρίσκονται σε έναν συγκεκριμένο φάκελο,
-    συγκεντρώνοντας τα περιεχόμενα πριν την δημιουργία των chunks.
+    συγκεντρώνοντας τα περιεχόμενα πριν τη δημιουργία των chunks.
     """
     st.info("Επεξεργασία αρχείων...")
     text_splitter = RecursiveCharacterTextSplitter(
@@ -47,7 +47,7 @@ def process_documents(pdf_directory, cache_key):
         length_function=len
     )
 
-    documents_text = []
+    all_texts = [] # Αλλαγή: Χρησιμοποιούμε λίστα για να αποθηκεύσουμε το κείμενο από κάθε αρχείο
     pdf_files = [
         os.path.join(pdf_directory, f)
         for f in os.listdir(pdf_directory)
@@ -64,20 +64,25 @@ def process_documents(pdf_directory, cache_key):
         try:
             st.write(f"Επεξεργάζομαι το αρχείο: {os.path.basename(pdf_path)}")
             pdf_reader = PdfReader(pdf_path)
-            all_text_from_pdf = ""
+            # Συλλέγουμε το κείμενο από τις σελίδες του τρέχοντος PDF
+            text_from_current_pdf = ""
             for page in pdf_reader.pages:
-                all_text_from_pdf += page.extract_text()
-            documents_text.append(all_text_from_pdf)
+                text_from_current_pdf += page.extract_text()
+            
+            # Προσθέτουμε το κείμενο από το τρέχον PDF στη λίστα
+            all_texts.append(text_from_current_pdf)
+            
             st.write(f"Το αρχείο {os.path.basename(pdf_path)} επεξεργάστηκε με επιτυχία.")
         except Exception as e:
             st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
             continue
 
-    if not documents_text:
+    if not all_texts:
         st.error("Δεν βρέθηκε κείμενο για επεξεργασία από τα PDF.")
         return None
 
-    all_text = " ".join(documents_text)
+    # Ενώνουμε όλα τα κείμενα σε έναν μεγάλο string
+    all_text = "\n".join(all_texts)
 
     text_chunks = text_splitter.split_text(all_text)
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
