@@ -13,6 +13,7 @@ from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.chains import ConversationalRetrievalChain
 from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.documents import Document
 from PyPDF2 import PdfReader
 
 # Ρύθμιση του asyncio event loop
@@ -37,8 +38,7 @@ def get_cache_key_for_directory(directory):
 @st.cache_resource
 def process_documents(pdf_directory, cache_key):
     """
-    Επεξεργάζεται όλα τα PDF που βρίσκονται σε έναν συγκεκριμένο φάκελο,
-    συγκεντρώνοντας τα περιεχόμενα πριν τη δημιουργία των chunks.
+    Επεξεργάζεται όλα τα PDF, δημιουργώντας ξεχωριστά Document objects για κάθε αρχείο.
     """
     st.info("Επεξεργασία αρχείων...")
     text_splitter = RecursiveCharacterTextSplitter(
@@ -47,7 +47,7 @@ def process_documents(pdf_directory, cache_key):
         length_function=len
     )
 
-    all_texts = [] # Αλλαγή: Χρησιμοποιούμε λίστα για να αποθηκεύσουμε το κείμενο από κάθε αρχείο
+    documents = [] # Αλλαγή: Χρησιμοποιούμε λίστα από Document objects
     pdf_files = [
         os.path.join(pdf_directory, f)
         for f in os.listdir(pdf_directory)
@@ -64,29 +64,30 @@ def process_documents(pdf_directory, cache_key):
         try:
             st.write(f"Επεξεργάζομαι το αρχείο: {os.path.basename(pdf_path)}")
             pdf_reader = PdfReader(pdf_path)
-            # Συλλέγουμε το κείμενο από τις σελίδες του τρέχοντος PDF
-            text_from_current_pdf = ""
+            all_text_from_pdf = ""
             for page in pdf_reader.pages:
-                text_from_current_pdf += page.extract_text()
+                all_text_from_pdf += page.extract_text()
             
-            # Προσθέτουμε το κείμενο από το τρέχον PDF στη λίστα
-            all_texts.append(text_from_current_pdf)
+            # Δημιουργούμε ένα Document object για κάθε PDF
+            documents.append(Document(page_content=all_text_from_pdf, metadata={"source": os.path.basename(pdf_path)}))
             
             st.write(f"Το αρχείο {os.path.basename(pdf_path)} επεξεργάστηκε με επιτυχία.")
         except Exception as e:
             st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
             continue
 
-    if not all_texts:
+    if not documents:
         st.error("Δεν βρέθηκε κείμενο για επεξεργασία από τα PDF.")
         return None
 
-    # Ενώνουμε όλα τα κείμενα σε έναν μεγάλο string
-    all_text = "\n".join(all_texts)
-
-    text_chunks = text_splitter.split_text(all_text)
+    # Χωρίζουμε τα Documents σε chunks
+    text_chunks = text_splitter.split_documents(documents)
+    
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-    vector_store = Chroma.from_texts(text_chunks, embeddings)
+    
+    # Δημιουργούμε το vector store από τα Document chunks
+    vector_store = Chroma.from_documents(text_chunks, embeddings)
+    
     qa_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
         retriever=vector_store.as_retriever(),
