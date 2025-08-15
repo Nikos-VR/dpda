@@ -36,14 +36,18 @@ def get_cache_key_for_directory(directory):
 
 @st.cache_resource
 def process_documents(pdf_directory, cache_key):
-    """Επεξεργάζεται όλα τα PDF που βρίσκονται σε έναν συγκεκριμένο φάκελο."""
+    """
+    Επεξεργάζεται όλα τα PDF που βρίσκονται σε έναν συγκεκριμένο φάκελο,
+    συγκεντρώνοντας τα περιεχόμενα πριν την δημιουργία των chunks.
+    """
     st.info("Επεξεργασία αρχείων...")
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len
     )
-    all_text = ""
+
+    documents_text = []
     pdf_files = [
         os.path.join(pdf_directory, f)
         for f in os.listdir(pdf_directory)
@@ -60,16 +64,20 @@ def process_documents(pdf_directory, cache_key):
         try:
             st.write(f"Επεξεργάζομαι το αρχείο: {os.path.basename(pdf_path)}")
             pdf_reader = PdfReader(pdf_path)
+            all_text_from_pdf = ""
             for page in pdf_reader.pages:
-                all_text += page.extract_text()
+                all_text_from_pdf += page.extract_text()
+            documents_text.append(all_text_from_pdf)
             st.write(f"Το αρχείο {os.path.basename(pdf_path)} επεξεργάστηκε με επιτυχία.")
         except Exception as e:
             st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
             continue
 
-    if not all_text.strip():
+    if not documents_text:
         st.error("Δεν βρέθηκε κείμενο για επεξεργασία από τα PDF.")
         return None
+
+    all_text = " ".join(documents_text)
 
     text_chunks = text_splitter.split_text(all_text)
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
