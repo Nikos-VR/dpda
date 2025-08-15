@@ -62,8 +62,6 @@ def process_single_txt_file(file_path):
 st.set_page_config(page_title="Απλό Chatbot", layout="wide")
 st.header("💬 Απλό Chatbot με Gemini")
 
-st.cache_resource.clear()
-
 # Αποθήκευση ιστορικού συνομιλίας
 if "messages" not in st.session_state:
     st.session_state.messages = []
