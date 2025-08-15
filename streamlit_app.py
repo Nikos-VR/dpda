@@ -1,4 +1,4 @@
-# Τοποθέτησε αυτές τις γραμμές ΑΜΕΣΑ στην κορυφή του αρχείου
+# Διόρθωση για το chromadb
 import pysqlite3
 import sys
 sys.modules["sqlite3"] = sys.modules["pysqlite3"]
@@ -30,7 +30,6 @@ def get_cache_key_for_directory(directory):
     Δημιουργεί ένα μοναδικό κλειδί με βάση τον χρόνο τροποποίησης του φακέλου.
     """
     try:
-        # Παίρνουμε τον χρόνο τελευταίας τροποποίησης του φακέλου
         return os.path.getmtime(directory)
     except FileNotFoundError:
         return None
@@ -93,7 +92,6 @@ if "qa_chain" not in st.session_state:
 
 # Εμφάνιση μηνύματος φόρτωσης στην αρχή
 if st.session_state.qa_chain is None:
-    # Καλούμε τη συνάρτηση επεξεργασίας με το cache key
     cache_key = get_cache_key_for_directory(data_dir)
     if cache_key is not None:
         st.session_state.qa_chain = process_documents(data_dir, cache_key)
@@ -120,8 +118,10 @@ if prompt := st.chat_input("Ρώτησέ με κάτι για τα έγγραφ�
     # Παραγωγή απάντησης από το chatbot
     with st.chat_message("assistant"):
         if st.session_state.qa_chain:
+            # Παίρνουμε μόνο τα τελευταία 4 μηνύματα για να μειώσουμε το μέγεθος του αιτήματος
+            last_four_messages = st.session_state.messages[-4:]
             chat_history_formatted = []
-            for msg in st.session_state.messages:
+            for msg in last_four_messages:
                 if msg["role"] == "user":
                     chat_history_formatted.append(HumanMessage(content=msg["content"]))
                 else:
