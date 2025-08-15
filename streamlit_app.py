@@ -1,4 +1,4 @@
-# Διόρθωση για το chromadb
+# Τοποθέτησε αυτές τις γραμμές ΑΜΕΣΑ στην κορυφή του αρχείου
 import pysqlite3
 import sys
 sys.modules["sqlite3"] = sys.modules["pysqlite3"]
@@ -13,6 +13,7 @@ from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.chains import ConversationalRetrievalChain
 from langchain_core.messages import HumanMessage, AIMessage
+from PyPDF2 import PdfReader
 
 # Ρύθμιση του asyncio event loop
 try:
@@ -24,38 +25,50 @@ except RuntimeError as ex:
 # Δημιουργία του Gemini Pro μοντέλου
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
-def get_cache_key_for_file(file_path):
-    """Δημιουργεί ένα μοναδικό κλειδί με βάση τον χρόνο τροποποίησης του αρχείου."""
+def get_cache_key_for_directory(directory):
+    """
+    Δημιουργεί ένα μοναδικό κλειδί με βάση τον χρόνο τροποποίησης του φακέλου.
+    """
     try:
-        return os.path.getmtime(file_path)
+        # Παίρνουμε τον χρόνο τελευταίας τροποποίησης του φακέλου
+        return os.path.getmtime(directory)
     except FileNotFoundError:
         return None
 
 @st.cache_resource
-def process_single_txt_file(file_path, cache_key):
-    """Επεξεργάζεται ένα μόνο αρχείο κειμένου, χρησιμοποιώντας το cache_key για ανανέωση."""
+def process_documents(pdf_directory, cache_key):
+    """Επεξεργάζεται όλα τα PDF που βρίσκονται σε έναν συγκεκριμένο φάκελο."""
+    st.info("Επεξεργασία αρχείων...")
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len
     )
+    all_text = ""
+    pdf_files = [
+        os.path.join(pdf_directory, f)
+        for f in os.listdir(pdf_directory)
+        if f.endswith('.pdf')
+    ]
     
-    if not os.path.exists(file_path):
-        st.error(f"Το αρχείο {file_path} δεν βρέθηκε.")
+    if not pdf_files:
+        st.warning("Δεν βρέθηκαν αρχεία PDF στον φάκελο 'data'.")
         return None
 
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            document_text = f.read()
-    except Exception as e:
-        st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου: {e}")
+    for pdf_path in pdf_files:
+        try:
+            pdf_reader = PdfReader(pdf_path)
+            for page in pdf_reader.pages:
+                all_text += page.extract_text()
+        except Exception as e:
+            st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
+            continue
+
+    if not all_text.strip():
+        st.error("Δεν βρέθηκε κείμενο για επεξεργασία από τα PDF.")
         return None
 
-    if not document_text.strip():
-        st.error("Το αρχείο κειμένου είναι κενό.")
-        return None
-
-    text_chunks = text_splitter.split_text(document_text)
+    text_chunks = text_splitter.split_text(all_text)
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
     vector_store = Chroma.from_texts(text_chunks, embeddings)
     qa_chain = ConversationalRetrievalChain.from_llm(
@@ -65,8 +78,12 @@ def process_single_txt_file(file_path, cache_key):
     )
     return qa_chain
 
-st.set_page_config(page_title="Απλό Chatbot", layout="wide")
-st.header("💬 Απλό Chatbot με Gemini")
+# Ρύθμιση του Streamlit UI
+st.set_page_config(page_title="PDF Chatbot", layout="wide")
+st.header("💬 PDF Chatbot με Gemini")
+
+# Δημιουργία της διαδρομής προς τον φάκελο με τα έγγραφα
+data_dir = "data"
 
 # Αποθήκευση ιστορικού συνομιλίας
 if "messages" not in st.session_state:
@@ -74,17 +91,19 @@ if "messages" not in st.session_state:
 if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
 
-# Επεξεργασία του αρχείου μόνο μία φορά
-file_path = os.path.join("data", "test.txt")
-cache_key = get_cache_key_for_file(file_path)
+# Εμφάνιση μηνύματος φόρτωσης στην αρχή
+if st.session_state.qa_chain is None:
+    # Καλούμε τη συνάρτηση επεξεργασίας με το cache key
+    cache_key = get_cache_key_for_directory(data_dir)
+    if cache_key is not None:
+        st.session_state.qa_chain = process_documents(data_dir, cache_key)
+    else:
+        st.error("Ο φάκελος 'data' δεν βρέθηκε. Δημιουργήστε τον και προσθέστε αρχεία.")
 
-if st.session_state.qa_chain is None or cache_key is not None:
-    with st.spinner("Επεξεργάζομαι το αρχείο κειμένου..."):
-        st.session_state.qa_chain = process_single_txt_file(file_path, cache_key)
-        if st.session_state.qa_chain:
-            st.success("Το αρχείο επεξεργάστηκε με επιτυχία!")
-        else:
-            st.error("Αδυναμία επεξεργασίας του αρχείου. Παρακαλώ ελέγξτε τον φάκελο 'data'.")
+    if st.session_state.qa_chain:
+        st.success("Τα έγγραφα έχουν επεξεργαστεί με επιτυχία!")
+    else:
+        st.error("Αδυναμία επεξεργασίας των εγγράφων. Παρακαλώ ελέγξτε τα αρχεία σας.")
 
 # Εμφάνιση του ιστορικού συνομιλίας
 for message in st.session_state.messages:
@@ -92,7 +111,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Είσοδος χρήστη
-if prompt := st.chat_input("Ρώτησέ με κάτι για το κείμενο..."):
+if prompt := st.chat_input("Ρώτησέ με κάτι για τα έγγραφα..."):
     # Εμφάνιση ερώτησης χρήστη
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
