@@ -13,8 +13,7 @@ from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.chains import ConversationalRetrievalChain
 from langchain_core.messages import HumanMessage, AIMessage
-import fitz  # Εισαγωγή της νέας βιβλιοθήκης PyMuPDF
-from langchain_core.documents import Document
+from langchain_community.document_loaders import DirectoryLoader, PyMuPDFLoader
 
 # Ρύθμιση του asyncio event loop
 try:
@@ -27,7 +26,9 @@ except RuntimeError as ex:
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.5, google_api_key=st.secrets["GOOGLE_API_KEY"])
 
 def get_cache_key_for_directory(directory):
-    """Δημιουργεί ένα μοναδικό κλειδί με βάση τον χρόνο τροποποίησης του φακέλου."""
+    """
+    Δημιουργεί ένα μοναδικό κλειδί με βάση τον χρόνο τροποποίησης του φακέλου.
+    """
     try:
         return os.path.getmtime(directory)
     except FileNotFoundError:
@@ -35,58 +36,49 @@ def get_cache_key_for_directory(directory):
 
 @st.cache_resource
 def process_documents(pdf_directory, cache_key):
-    """Επεξεργάζεται όλα τα PDF, δημιουργώντας ξεχωριστά Document objects για κάθε αρχείο."""
+    """Επεξεργάζεται όλα τα PDF στον φάκελο 'data' χρησιμοποιώντας τον DirectoryLoader."""
     st.info("Επεξεργασία αρχείων...")
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-        length_function=len
-    )
 
-    documents = []
-    pdf_files = [
-        os.path.join(pdf_directory, f)
-        for f in os.listdir(pdf_directory)
-        if f.endswith('.pdf')
-    ]
-
-    if not pdf_files:
-        st.warning("Δεν βρέθηκαν αρχεία PDF στον φάκελο 'data'.")
+    if not os.path.exists(pdf_directory) or not os.listdir(pdf_directory):
+        st.warning("Δεν βρέθηκαν αρχεία στον φάκελο 'data'.")
         return None
 
-    st.write(f"Βρέθηκαν {len(pdf_files)} αρχεία PDF για επεξεργασία.")
+    try:
+        # Χρήση του DirectoryLoader για να διαβάσει όλα τα PDF
+        loader = DirectoryLoader(
+            pdf_directory,
+            glob="*.pdf",
+            loader_cls=PyMuPDFLoader,
+            recursive=True
+        )
+        documents = loader.load()
 
-    for pdf_path in pdf_files:
-        try:
-            st.write(f"Επεξεργάζομαι το αρχείο: {os.path.basename(pdf_path)}")
-            doc = fitz.open(pdf_path)  # Άνοιγμα του PDF με το PyMuPDF
-            all_text_from_pdf = ""
-            for page in doc:
-                all_text_from_pdf += page.get_text()
+        if not documents:
+            st.warning("Δεν βρέθηκε κείμενο για επεξεργασία από τα PDF.")
+            return None
 
-            documents.append(Document(page_content=all_text_from_pdf, metadata={"source": os.path.basename(pdf_path)}))
+        st.write(f"Βρέθηκαν {len(documents)} αρχεία για επεξεργασία.")
 
-            st.write(f"Το αρχείο {os.path.basename(pdf_path)} επεξεργάστηκε με επιτυχία.")
-        except Exception as e:
-            st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
-            continue
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            length_function=len
+        )
+        text_chunks = text_splitter.split_documents(documents)
 
-    if not documents:
-        st.error("Δεν βρέθηκε κείμενο για επεξεργασία από τα PDF.")
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+        vector_store = Chroma.from_documents(text_chunks, embeddings)
+
+        qa_chain = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=vector_store.as_retriever(),
+            return_source_documents=True
+        )
+        return qa_chain
+
+    except Exception as e:
+        st.error(f"Σφάλμα κατά την επεξεργασία των εγγράφων: {e}")
         return None
-
-    text_chunks = text_splitter.split_documents(documents)
-
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-
-    vector_store = Chroma.from_documents(text_chunks, embeddings)
-
-    qa_chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=vector_store.as_retriever(),
-        return_source_documents=True
-    )
-    return qa_chain
 
 # Ρύθμιση του Streamlit UI
 st.set_page_config(page_title="PDF Chatbot", layout="wide")
