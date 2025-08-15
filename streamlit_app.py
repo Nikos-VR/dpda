@@ -65,11 +65,6 @@ def process_single_txt_file(file_path, cache_key):
     )
     return qa_chain
 
----
-
-### UI και Λογική της Εφαρμογής
-
-```python
 st.set_page_config(page_title="Απλό Chatbot", layout="wide")
 st.header("💬 Απλό Chatbot με Gemini")
 
