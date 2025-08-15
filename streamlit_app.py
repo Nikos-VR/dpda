@@ -36,46 +36,59 @@ def get_cache_key_for_directory(directory):
 
 @st.cache_resource
 def process_documents(pdf_directory, cache_key):
-    """Επεξεργάζεται όλα τα PDF στον φάκελο 'data' χρησιμοποιώντας τον DirectoryLoader."""
+    """
+    Επεξεργάζεται όλα τα PDF που βρίσκονται σε έναν συγκεκριμένο φάκελο,
+    συγκεντρώνοντας τα περιεχόμενα πριν την δημιουργία των chunks.
+    """
     st.info("Επεξεργασία αρχείων...")
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200,
+        length_function=len
+    )
 
-    if not os.path.exists(pdf_directory) or not os.listdir(pdf_directory):
-        st.warning("Δεν βρέθηκαν αρχεία στον φάκελο 'data'.")
+    documents_text = []
+    pdf_files = [
+        os.path.join(pdf_directory, f)
+        for f in os.listdir(pdf_directory)
+        if f.endswith('.pdf')
+    ]
+    
+    if not pdf_files:
+        st.warning("Δεν βρέθηκαν αρχεία PDF στον φάκελο 'data'.")
         return None
 
-    try:
-        # Χρήση του DirectoryLoader για να διαβάσει όλα τα PDF
-        loader = DirectoryLoader(
-            pdf_directory,
-            glob="*.pdf",
-            loader_cls=PyMuPDFLoader,
-            recursive=True
-        )
-        documents = loader.load()
+    st.write(f"Βρέθηκαν {len(pdf_files)} αρχεία PDF για επεξεργασία.")
+    
+    for pdf_path in pdf_files:
+        try:
+            st.write(f"Επεξεργάζομαι το αρχείο: {os.path.basename(pdf_path)}")
+            pdf_reader = PdfReader(pdf_path)
+            all_text_from_pdf = ""
+            for page in pdf_reader.pages:
+                all_text_from_pdf += page.extract_text()
+            documents_text.append(all_text_from_pdf)
+            st.write(f"Το αρχείο {os.path.basename(pdf_path)} επεξεργάστηκε με επιτυχία.")
+        except Exception as e:
+            st.error(f"Σφάλμα κατά την ανάγνωση του αρχείου {pdf_path}: {e}")
+            continue
 
-        if not documents:
-            st.warning("Δεν βρέθηκε κείμενο για επεξεργασία από τα PDF.")
-            return None
+    if not documents_text:
+        st.error("Δεν βρέθηκε κείμενο για επεξεργασία από τα PDF.")
+        return None
 
-        st.write(f"Βρέθηκαν {len(documents)} αρχεία για επεξεργασία.")
+    all_text = " ".join(documents_text)
 
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len
-        )
-        text_chunks = text_splitter.split_documents(documents)
-
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-        vector_store = Chroma.from_documents(text_chunks, embeddings)
-
-        qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=vector_store.as_retriever(),
-            return_source_documents=True
-        )
-        return qa_chain
-
+    text_chunks = text_splitter.split_text(all_text)
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+    vector_store = Chroma.from_texts(text_chunks, embeddings)
+    qa_chain = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=vector_store.as_retriever(),
+        return_source_documents=True
+    )
+    return qa_chain
+    
     except Exception as e:
         st.error(f"Σφάλμα κατά την επεξεργασία των εγγράφων: {e}")
         return None
