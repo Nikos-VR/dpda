@@ -5,3 +5,4 @@ langchain-chroma
 chromadb
 pysqlite3-binary
 PyMuPDF
+mysql-connector-python
